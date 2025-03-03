@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/joho/godotenv"
 	"os"
 	"strconv"
 )
@@ -13,13 +14,16 @@ type Config struct {
 }
 
 func LoadConfig() (*Config, error) {
+	_ = godotenv.Load()
+
 	cfg := &Config{}
+
 	cfg.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	if cfg.TelegramBotToken == "" {
 		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN is not set")
 	}
 
-	cfg.YtDlpPath = os.Getenv("TELEGRAM_DLP_PATH")
+	cfg.YtDlpPath = os.Getenv("YT_DLP_PATH")
 	if cfg.YtDlpPath == "" {
 		cfg.YtDlpPath = "yt-dlp"
 	}

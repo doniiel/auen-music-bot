@@ -7,6 +7,7 @@ import (
 	"music-bot/internal/search"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Bot struct {
@@ -47,77 +48,111 @@ func (b *Bot) Start() error {
 
 	return nil
 }
-
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	chatID := msg.Chat.ID
-	query := msg.Text
+	query := strings.TrimSpace(msg.Text)
 
+	// Handle specific commands.
+	switch query {
+	case "/start":
+		b.sendTextMessage(chatID, "Привет! Напиши название песни, которую ищешь, и я помогу найти её.")
+		return
+	case "/help":
+		helpText := "Доступные команды:\n" +
+			"/start - Приветствие и инструкция\n" +
+			"/help - Список команд\n" +
+			"/search - Поиск музыки (напиши название песни или исполнителя)"
+		b.sendTextMessage(chatID, helpText)
+		return
+	case "/search":
+		b.sendTextMessage(chatID, "Напиши название песни или исполнителя для поиска.")
+		return
+	}
+
+	// Otherwise, treat the input as a search query.
+	loadingMsg, err := b.api.Send(tgbotapi.NewMessage(chatID, "Ищу треки..."))
+	if err != nil {
+		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+
+	// Search for tracks using yt-dlp.
 	tracks, err := b.searcher.Search(query)
 	if err != nil {
-		text := fmt.Sprintf("Ошибка при поиске: %v", err)
-		b.sendTextMessage(chatID, text)
+		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("Ошибка при поиске: %v", err))
 		return
 	}
 	if len(tracks) == 0 {
-		b.sendTextMessage(chatID, "Ничего не найдено :(")
+		b.editTextMessage(chatID, loadingMsg.MessageID, "Ничего не найдено.")
 		return
 	}
-
 	b.lastSearchResults[chatID] = tracks
 
-	var btns []tgbotapi.InlineKeyboardButton
-	for i, t := range tracks {
-		textBtn := fmt.Sprintf("%s (%s)", t.Title, t.Artist)
+	// Build a vertical inline keyboard (each button on its own row).
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for i, track := range tracks {
+		btnText := fmt.Sprintf("%s (%s)", track.Title, track.Artist)
 		data := strconv.Itoa(i)
-		btn := tgbotapi.NewInlineKeyboardButtonData(textBtn, data)
-		btns = append(btns, btn)
+		button := tgbotapi.NewInlineKeyboardButtonData(btnText, data)
+		rows = append(rows, []tgbotapi.InlineKeyboardButton{button})
+	}
+	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
+	photoMsg := tgbotapi.NewPhoto(chatID, tgbotapi.FilePath("jpeg"))
+	photoMsg.Caption = "🎵 Найдены треки:\nВыберите трек:"
+	photoMsg.ReplyMarkup = &kb
+	if _, err := b.api.Send(photoMsg); err != nil {
+		log.Printf("Ошибка отправки фото: %v", err)
 	}
 
-	kb := tgbotapi.NewInlineKeyboardMarkup(btns)
-	outMsg := tgbotapi.NewMessage(chatID, "Выберите трек:")
-	outMsg.ReplyMarkup = kb
-	b.api.Send(outMsg)
 }
 
 func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	chatID := cb.Message.Chat.ID
-
 	idx, err := strconv.Atoi(cb.Data)
 	if err != nil {
 		log.Printf("Callback parse error: %v", err)
 		return
 	}
-
 	tracks, ok := b.lastSearchResults[chatID]
 	if !ok || idx < 0 || idx >= len(tracks) {
-		log.Printf("No tracks for chat %d or invalid idx %d", chatID, idx)
+		log.Printf("No track for chat %d at index %d", chatID, idx)
 		return
 	}
-
 	track := tracks[idx]
 
+	// Inform user that download is in progress
+	loadingMsg, err := b.api.Send(tgbotapi.NewMessage(chatID, "Downloading audio..."))
+	if err != nil {
+		log.Printf("Error sending message: %v", err)
+	}
 	tmpFile := fmt.Sprintf("/tmp/%s.mp3", track.ID)
 	err = b.searcher.DownloadAudio(track, tmpFile)
 	if err != nil {
-		log.Printf("Download error: %v", err)
-		b.sendTextMessage(chatID, "Ошибка скачивания :(")
+		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("Error downloading audio: %v", err))
 		return
 	}
 	defer os.Remove(tmpFile)
 
-	audioMsg := tgbotapi.NewAudioUpload(chatID, tgbotapi.FilePath(tmpFile))
+	audioMsg := tgbotapi.NewAudio(chatID, tgbotapi.FilePath(tmpFile))
 	audioMsg.Title = track.Title
 	audioMsg.Performer = track.Artist
-
 	if _, err := b.api.Send(audioMsg); err != nil {
-		log.Printf("Send audio error: %v", err)
-		b.sendTextMessage(chatID, "Не удалось отправить аудио.")
+		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("Error sending audio: %v", err))
+	} else {
+		b.editTextMessage(chatID, loadingMsg.MessageID, "Audio delivered successfully!")
 	}
-
-	b.api.Request(tgbotapi.NewCallback(cb.ID, "Отправляем аудио..."))
+	b.api.Request(tgbotapi.NewCallback(cb.ID, "Processing complete."))
 }
 
+// sendTextMessage is a helper function to send a simple text message.
 func (b *Bot) sendTextMessage(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	b.api.Send(msg)
+}
+
+// editTextMessage is a helper function to edit an existing message.
+func (b *Bot) editTextMessage(chatID int64, messageID int, text string) {
+	editMsg := tgbotapi.NewEditMessageText(chatID, messageID, text)
+	if _, err := b.api.Send(editMsg); err != nil {
+		log.Printf("Ошибка редактирования сообщения: %v", err)
+	}
 }

@@ -28,11 +28,7 @@ func NewYTSearcher(ytDlpPath string, resultsLimit int) *YTSearcher {
 }
 
 func (s *YTSearcher) Search(query string) ([]Track, error) {
-	cmd := exec.Command(
-		s.ytDlpPath,
-		fmt.Sprintf("ytsearch%d:%s", s.resultsLimit, query),
-		"--dump-json",
-	)
+	cmd := exec.Command(s.ytDlpPath, fmt.Sprintf("ytsearch%d:%s", s.resultsLimit, query), "--dump-json")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run ytsearch command: %w", err)
@@ -40,7 +36,6 @@ func (s *YTSearcher) Search(query string) ([]Track, error) {
 
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	var tracks []Track
-
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -68,15 +63,10 @@ func (s *YTSearcher) Search(query string) ([]Track, error) {
 }
 
 func (s *YTSearcher) DownloadAudio(track Track, outPath string) error {
-	cmd := exec.Command(
-		s.ytDlpPath,
-		"-x",
-		"--audio-format", "mp3",
-		"--output", outPath,
-		track.URL,
-	)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to download audio: %w", err)
+	cmd := exec.Command(s.ytDlpPath, "-x", "--audio-format", "mp3", "--output", outPath, track.URL)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to download audio: %w, output: %s", err, string(output))
 	}
 	return nil
 }

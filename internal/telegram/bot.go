@@ -135,6 +135,7 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	audioMsg := tgbotapi.NewAudio(chatID, tgbotapi.FilePath(tmpFile))
 	audioMsg.Title = track.Title
 	audioMsg.Performer = track.Artist
+	audioMsg.Thumb = tgbotapi.FilePath("logo.png")
 	if _, err := b.api.Send(audioMsg); err != nil {
 		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("Error sending audio: %v", err))
 	} else {

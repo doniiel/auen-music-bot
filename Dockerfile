@@ -27,5 +27,6 @@ WORKDIR /app
 # Копируем собранный бинарник из этапа сборки
 COPY --from=builder /app/music-bot /usr/local/bin/music-bot
 COPY banner.jpeg /app/banner.jpeg
+COPY logo.png /app/logo.png
 
 CMD ["/usr/local/bin/music-bot"]

@@ -26,5 +26,6 @@ RUN apk add --no-cache ffmpeg python3 py3-pip ca-certificates && \
 WORKDIR /app
 # Копируем собранный бинарник из этапа сборки
 COPY --from=builder /app/music-bot /usr/local/bin/music-bot
+COPY banner.jpeg /app/banner.jpeg
 
 CMD ["/usr/local/bin/music-bot"]

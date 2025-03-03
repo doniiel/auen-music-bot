@@ -96,7 +96,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		rows = append(rows, []tgbotapi.InlineKeyboardButton{button})
 	}
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
-	photoMsg := tgbotapi.NewPhoto(chatID, tgbotapi.FilePath("jpeg"))
+	photoMsg := tgbotapi.NewPhoto(chatID, tgbotapi.FilePath("banner.jpeg"))
 	photoMsg.Caption = "🎵 Найдены треки:\nВыберите трек:"
 	photoMsg.ReplyMarkup = &kb
 	if _, err := b.api.Send(photoMsg); err != nil {

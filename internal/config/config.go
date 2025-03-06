@@ -25,7 +25,7 @@ func LoadConfig() (*Config, error) {
 
 	cfg.YtDlpPath = os.Getenv("YT_DLP_PATH")
 	if cfg.YtDlpPath == "" {
-		cfg.YtDlpPath = "yt-dlp"
+		cfg.YtDlpPath = "/usr/bin/yt-dlp"
 	}
 
 	limitStr := os.Getenv("SEARCH_LIMIT")

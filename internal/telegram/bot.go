@@ -110,7 +110,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	}
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
 	// Отправляем фото-баннер с клавиатурой. Убедитесь, что файл "banner.jpeg" скопирован в контейнер.
-	photoMsg := tgbotapi.NewPhoto(chatID, tgbotapi.FilePath("banner.jpeg"))
+	photoMsg := tgbotapi.NewPhoto(chatID, tgbotapi.FilePath("./asset/banner.jpeg"))
 	photoMsg.Caption = b.localizeMessage(chatID, "tracks_found")
 	photoMsg.ReplyMarkup = &kb
 	if _, err := b.api.Send(photoMsg); err != nil {
@@ -159,7 +159,7 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	audioMsg := tgbotapi.NewAudio(chatID, tgbotapi.FilePath(tmpFile))
 	audioMsg.Title = track.Title
 	audioMsg.Performer = track.Artist
-	audioMsg.Thumb = tgbotapi.FilePath("logo.png")
+	audioMsg.Thumb = tgbotapi.FilePath("./asset/logo.png")
 	if _, err := b.api.Send(audioMsg); err != nil {
 		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("%s: %v", b.localizeMessage(chatID, "send_audio_error"), err))
 	} else {

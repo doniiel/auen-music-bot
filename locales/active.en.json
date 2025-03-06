@@ -1,5 +1,0 @@
-{
-  "start": "Welcome! Please select your language:",
-  "help": "Use /start to begin, /help for commands, and /search to find music.",
-  "search_prompt": "Please type a song title or artist to search."
-}

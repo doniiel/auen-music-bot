@@ -2,21 +2,22 @@ package telegram
 
 import (
 	"fmt"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"log"
-	i18n2 "music-bot/internal/i18"
-	"music-bot/internal/search"
 	"os"
 	"strconv"
 	"strings"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
+	i18n2 "music-bot/internal/i18"
+	"music-bot/internal/search"
 )
 
 type Bot struct {
 	api               *tgbotapi.BotAPI
 	searcher          *search.YTSearcher
 	lastSearchResults map[int64][]search.Track
-	userLang          map[int64]string
+	userLang          map[int64]string // хранит выбранный язык для каждого чата (например, "lang_ru", "lang_en", "lang_kaz")
 }
 
 func NewBot(token string, searcher *search.YTSearcher) (*Bot, error) {
@@ -52,48 +53,54 @@ func (b *Bot) Start() error {
 
 	return nil
 }
+
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	chatID := msg.Chat.ID
 	query := strings.TrimSpace(msg.Text)
 
 	switch query {
 	case "/start":
-		// Отправляем сообщение для выбора языка
+		// Отправляем сообщение для выбора языка с использованием локализации
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
 				tgbotapi.NewInlineKeyboardButtonData("English", "lang_en"),
 				tgbotapi.NewInlineKeyboardButtonData("Русский", "lang_ru"),
+				tgbotapi.NewInlineKeyboardButtonData("Қазақша", "lang_kaz"),
 			),
 		)
-		startMsg := tgbotapi.NewMessage(chatID, "Welcome! Please select your language:")
+		// По умолчанию сообщение /start локализуем как "start" (в ru.json оно должно быть на русском)
+		startMsgText := b.localizeMessage(chatID, "start")
+		startMsg := tgbotapi.NewMessage(chatID, startMsgText)
 		startMsg.ReplyMarkup = keyboard
 		b.api.Send(startMsg)
 		return
 	case "/help":
-		// Пример: здесь можно брать сообщение из локализации
-		b.sendTextMessage(chatID, "Help message goes here...")
+		helpText := b.localizeMessage(chatID, "help")
+		b.sendTextMessage(chatID, helpText)
 		return
 	case "/search":
-		b.sendTextMessage(chatID, "Please type a song title or artist for search.")
+		searchPrompt := b.localizeMessage(chatID, "search_prompt")
+		b.sendTextMessage(chatID, searchPrompt)
 		return
 	}
 
-	// Если не команда выбора языка, продолжаем обработку запроса (например, поиск)
-	loadingMsg, err := b.api.Send(tgbotapi.NewMessage(chatID, "Searching tracks..."))
+	// Если сообщение не является командой выбора языка, считаем его поисковым запросом.
+	loadingMsg, err := b.api.Send(tgbotapi.NewMessage(chatID, b.localizeMessage(chatID, "searching")))
 	if err != nil {
-		log.Printf("Error sending message: %v", err)
+		log.Printf("Ошибка отправки сообщения: %v", err)
 	}
 	tracks, err := b.searcher.Search(query)
 	if err != nil {
-		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("Search error: %v", err))
+		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("%s: %v", b.localizeMessage(chatID, "search_error"), err))
 		return
 	}
 	if len(tracks) == 0 {
-		b.editTextMessage(chatID, loadingMsg.MessageID, "No tracks found.")
+		b.editTextMessage(chatID, loadingMsg.MessageID, b.localizeMessage(chatID, "no_tracks"))
 		return
 	}
 	b.lastSearchResults[chatID] = tracks
-	// Build a vertical inline keyboard (each button on its own row).
+
+	// Построение вертикальной inline-клавиатуры с результатами.
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for i, track := range tracks {
 		btnText := fmt.Sprintf("%s (%s)", track.Title, track.Artist)
@@ -102,28 +109,29 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		rows = append(rows, []tgbotapi.InlineKeyboardButton{button})
 	}
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
+	// Отправляем фото-баннер с клавиатурой. Убедитесь, что файл "banner.jpeg" скопирован в контейнер.
 	photoMsg := tgbotapi.NewPhoto(chatID, tgbotapi.FilePath("banner.jpeg"))
-	photoMsg.Caption = "🎵 Найдены треки:\nВыберите трек:"
+	photoMsg.Caption = b.localizeMessage(chatID, "tracks_found")
 	photoMsg.ReplyMarkup = &kb
 	if _, err := b.api.Send(photoMsg); err != nil {
 		log.Printf("Ошибка отправки фото: %v", err)
 	}
-
 }
-
 func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	chatID := cb.Message.Chat.ID
 	data := cb.Data
-
-	// Если callback содержит выбор языка
-	if data == "lang_en" || data == "lang_ru" {
-		b.userLang[chatID] = data // сохраняем выбранный язык, например "lang_en" или "lang_ru"
-		// Отправляем сообщение с подтверждением
-		b.sendTextMessage(chatID, "Language set successfully!")
+	// Обработка выбора языка
+	if data == "lang_en" || data == "lang_ru" || data == "lang_kaz" {
+		b.userLang[chatID] = data // Сохраняем выбранный язык
+		langSetMsg := b.localizeMessage(chatID, "language_set")
+		b.sendTextMessage(chatID, langSetMsg)
+		// Отправляем инструкцию по поиску музыки
+		searchInstr := b.localizeMessage(chatID, "search_instruction")
+		b.sendTextMessage(chatID, searchInstr)
 		return
 	}
 
-	// Далее – обработка callback для выбора трека (оставляем текущую логику)
+	// Обработка выбора трека
 	idx, err := strconv.Atoi(data)
 	if err != nil {
 		log.Printf("Callback parse error: %v", err)
@@ -136,15 +144,14 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	}
 	track := tracks[idx]
 
-	// Inform user that download is in progress
-	loadingMsg, err := b.api.Send(tgbotapi.NewMessage(chatID, "Downloading audio..."))
+	loadingMsg, err := b.api.Send(tgbotapi.NewMessage(chatID, b.localizeMessage(chatID, "downloading")))
 	if err != nil {
 		log.Printf("Error sending message: %v", err)
 	}
 	tmpFile := fmt.Sprintf("/tmp/%s.mp3", track.ID)
 	err = b.searcher.DownloadAudio(track, tmpFile)
 	if err != nil {
-		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("Error downloading audio: %v", err))
+		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("%s: %v", b.localizeMessage(chatID, "download_error"), err))
 		return
 	}
 	defer os.Remove(tmpFile)
@@ -154,20 +161,20 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	audioMsg.Performer = track.Artist
 	audioMsg.Thumb = tgbotapi.FilePath("logo.png")
 	if _, err := b.api.Send(audioMsg); err != nil {
-		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("Error sending audio: %v", err))
+		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("%s: %v", b.localizeMessage(chatID, "send_audio_error"), err))
 	} else {
-		b.editTextMessage(chatID, loadingMsg.MessageID, "Audio delivered successfully!")
+		b.editTextMessage(chatID, loadingMsg.MessageID, b.localizeMessage(chatID, "audio_delivered"))
 	}
-	b.api.Request(tgbotapi.NewCallback(cb.ID, "Processing complete."))
+	b.api.Request(tgbotapi.NewCallback(cb.ID, b.localizeMessage(chatID, "processing_complete")))
 }
 
-// sendTextMessage is a helper function to send a simple text message.
+// sendTextMessage отправляет простое текстовое сообщение.
 func (b *Bot) sendTextMessage(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	b.api.Send(msg)
 }
 
-// editTextMessage is a helper function to edit an existing message.
+// editTextMessage редактирует существующее сообщение.
 func (b *Bot) editTextMessage(chatID int64, messageID int, text string) {
 	editMsg := tgbotapi.NewEditMessageText(chatID, messageID, text)
 	if _, err := b.api.Send(editMsg); err != nil {
@@ -175,11 +182,15 @@ func (b *Bot) editTextMessage(chatID int64, messageID int, text string) {
 	}
 }
 
+// localizeMessage возвращает локализованное сообщение для данного чата.
 func (b *Bot) localizeMessage(chatID int64, messageID string) string {
-	lang := "en" // язык по умолчанию
+	// По умолчанию русский язык.
+	lang := "ru"
 	if l, ok := b.userLang[chatID]; ok {
-		if l == "lang_ru" {
-			lang = "ru"
+		if l == "lang_en" {
+			lang = "en"
+		} else if l == "lang_kaz" {
+			lang = "kaz"
 		}
 	}
 	localizer := i18n.NewLocalizer(i18n2.Bundle, lang)
@@ -187,7 +198,7 @@ func (b *Bot) localizeMessage(chatID int64, messageID string) string {
 		MessageID: messageID,
 	})
 	if err != nil {
-		return messageID // если произошла ошибка, вернуть ключ
+		return messageID // Если произошла ошибка, вернуть ключ.
 	}
 	return msg
 }

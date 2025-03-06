@@ -19,12 +19,16 @@ func InitI18n() {
 	Bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
 
 	// Загружаем файлы перевода
-	_, err := Bundle.LoadMessageFileFS(localeFS, "locales/active.en.json")
+	_, err := Bundle.LoadMessageFileFS(localeFS, "locales/en.json")
 	if err != nil {
 		log.Fatalf("failed to load en translations: %v", err)
 	}
-	_, err = Bundle.LoadMessageFileFS(localeFS, "locales/active.ru.json")
+	_, err = Bundle.LoadMessageFileFS(localeFS, "locales/ru.json")
 	if err != nil {
 		log.Fatalf("failed to load ru translations: %v", err)
+	}
+	_, err = Bundle.LoadMessageFileFS(localeFS, "locales/kaz.json")
+	if err != nil {
+		log.Fatalf("failed to load kaz translations: %v", err)
 	}
 }

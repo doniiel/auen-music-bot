@@ -1,0 +1,15 @@
+{
+  "start": "Welcome! Please select your language:",
+  "help": "Use /start to begin, /help for commands and /search to find music.",
+  "search_prompt": "Please type a song title or artist to search.",
+  "searching": "Searching tracks...",
+  "no_tracks": "No tracks found.",
+  "tracks_found": "🎵 Tracks found:\nPlease select a track:",
+  "language_set": "Language set successfully!",
+  "search_instruction": "To search for music, use the /search command.",
+  "downloading": "Downloading audio...",
+  "download_error": "Error downloading audio",
+  "send_audio_error": "Error sending audio",
+  "audio_delivered": "Audio delivered successfully!",
+  "processing_complete": "Processing complete."
+}

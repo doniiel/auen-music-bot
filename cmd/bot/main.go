@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	i18n "music-bot/internal/i18"
 
 	"music-bot/internal/config"
 	"music-bot/internal/logger"
@@ -11,6 +12,7 @@ import (
 
 func main() {
 	logger.InitLogger()
+	i18n.InitI18n()
 
 	cfg, err := config.LoadConfig()
 	if err != nil {

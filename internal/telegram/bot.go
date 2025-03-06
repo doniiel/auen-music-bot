@@ -3,7 +3,9 @@ package telegram
 import (
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"log"
+	i18n2 "music-bot/internal/i18"
 	"music-bot/internal/search"
 	"os"
 	"strconv"
@@ -14,6 +16,7 @@ type Bot struct {
 	api               *tgbotapi.BotAPI
 	searcher          *search.YTSearcher
 	lastSearchResults map[int64][]search.Track
+	userLang          map[int64]string
 }
 
 func NewBot(token string, searcher *search.YTSearcher) (*Bot, error) {
@@ -27,6 +30,7 @@ func NewBot(token string, searcher *search.YTSearcher) (*Bot, error) {
 		api:               botAPI,
 		searcher:          searcher,
 		lastSearchResults: make(map[int64][]search.Track),
+		userLang:          make(map[int64]string),
 	}, nil
 }
 
@@ -52,41 +56,43 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	chatID := msg.Chat.ID
 	query := strings.TrimSpace(msg.Text)
 
-	// Handle specific commands.
 	switch query {
 	case "/start":
-		b.sendTextMessage(chatID, "Привет! Напиши название песни, которую ищешь, и я помогу найти её.")
+		// Отправляем сообщение для выбора языка
+		keyboard := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("English", "lang_en"),
+				tgbotapi.NewInlineKeyboardButtonData("Русский", "lang_ru"),
+			),
+		)
+		startMsg := tgbotapi.NewMessage(chatID, "Welcome! Please select your language:")
+		startMsg.ReplyMarkup = keyboard
+		b.api.Send(startMsg)
 		return
 	case "/help":
-		helpText := "Доступные команды:\n" +
-			"/start - Приветствие и инструкция\n" +
-			"/help - Список команд\n" +
-			"/search - Поиск музыки (напиши название песни или исполнителя)"
-		b.sendTextMessage(chatID, helpText)
+		// Пример: здесь можно брать сообщение из локализации
+		b.sendTextMessage(chatID, "Help message goes here...")
 		return
 	case "/search":
-		b.sendTextMessage(chatID, "Напиши название песни или исполнителя для поиска.")
+		b.sendTextMessage(chatID, "Please type a song title or artist for search.")
 		return
 	}
 
-	// Otherwise, treat the input as a search query.
-	loadingMsg, err := b.api.Send(tgbotapi.NewMessage(chatID, "Ищу треки..."))
+	// Если не команда выбора языка, продолжаем обработку запроса (например, поиск)
+	loadingMsg, err := b.api.Send(tgbotapi.NewMessage(chatID, "Searching tracks..."))
 	if err != nil {
-		log.Printf("Ошибка отправки сообщения: %v", err)
+		log.Printf("Error sending message: %v", err)
 	}
-
-	// Search for tracks using yt-dlp.
 	tracks, err := b.searcher.Search(query)
 	if err != nil {
-		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("Ошибка при поиске: %v", err))
+		b.editTextMessage(chatID, loadingMsg.MessageID, fmt.Sprintf("Search error: %v", err))
 		return
 	}
 	if len(tracks) == 0 {
-		b.editTextMessage(chatID, loadingMsg.MessageID, "Ничего не найдено.")
+		b.editTextMessage(chatID, loadingMsg.MessageID, "No tracks found.")
 		return
 	}
 	b.lastSearchResults[chatID] = tracks
-
 	// Build a vertical inline keyboard (each button on its own row).
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for i, track := range tracks {
@@ -107,7 +113,18 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	chatID := cb.Message.Chat.ID
-	idx, err := strconv.Atoi(cb.Data)
+	data := cb.Data
+
+	// Если callback содержит выбор языка
+	if data == "lang_en" || data == "lang_ru" {
+		b.userLang[chatID] = data // сохраняем выбранный язык, например "lang_en" или "lang_ru"
+		// Отправляем сообщение с подтверждением
+		b.sendTextMessage(chatID, "Language set successfully!")
+		return
+	}
+
+	// Далее – обработка callback для выбора трека (оставляем текущую логику)
+	idx, err := strconv.Atoi(data)
 	if err != nil {
 		log.Printf("Callback parse error: %v", err)
 		return
@@ -156,4 +173,21 @@ func (b *Bot) editTextMessage(chatID int64, messageID int, text string) {
 	if _, err := b.api.Send(editMsg); err != nil {
 		log.Printf("Ошибка редактирования сообщения: %v", err)
 	}
+}
+
+func (b *Bot) localizeMessage(chatID int64, messageID string) string {
+	lang := "en" // язык по умолчанию
+	if l, ok := b.userLang[chatID]; ok {
+		if l == "lang_ru" {
+			lang = "ru"
+		}
+	}
+	localizer := i18n.NewLocalizer(i18n2.Bundle, lang)
+	msg, err := localizer.Localize(&i18n.LocalizeConfig{
+		MessageID: messageID,
+	})
+	if err != nil {
+		return messageID // если произошла ошибка, вернуть ключ
+	}
+	return msg
 }
